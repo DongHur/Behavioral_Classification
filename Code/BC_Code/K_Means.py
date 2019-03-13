@@ -4,7 +4,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import torch
-from Code.utils.kmeans_pytorch.kmeans import lloyd, lloyd_batch, kmeans_core
+from utils.kmeans_pytorch.kmeans import lloyd, lloyd_batch, kmeans_core
 
 def new_func():
     data_test = np.load('../../Data/PowerSpectogram_Data/CB_power_ALLdata_60bp_25fBin.npy')
@@ -24,7 +24,7 @@ def new_func():
 
 def main():
     bp,coord,fbin,num_data = data_test.shape
-    data_test = np.load('../../Data/PowerSpectogram_Data/CB_power_100data_60bp_50fBin.npy')
+    data_test = np.load('../Data/PowerSpectogram_Data/CB_power_100data_60bp_50fBin.npy')
     data_cluster = data_test.reshape((bp*coord*fbin, data_test.shape[-1])).transpose(1,0)
     # YOU MUST RANDOMIZE YOUR DATA BEFORE YOU SEND YOUR DATA INTO BATCH!!!
     min_k = 2
