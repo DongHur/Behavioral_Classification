@@ -23,8 +23,8 @@ def new_func():
     plt.show()
 
 def main():
-    bp,coord,fbin,num_data = data_test.shape
     data_test = np.load('../Data/PowerSpectogram_Data/CB_power_100data_60bp_50fBin.npy')
+    bp,coord,fbin,num_data = data_test.shape
     data_cluster = data_test.reshape((bp*coord*fbin, data_test.shape[-1])).transpose(1,0)
     # YOU MUST RANDOMIZE YOUR DATA BEFORE YOU SEND YOUR DATA INTO BATCH!!!
     min_k = 2
