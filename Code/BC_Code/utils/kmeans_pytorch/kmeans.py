@@ -2,7 +2,7 @@ import torch
 
 from torch import Tensor
 import numpy as np
-from kmeans_pytorch.pairwise import pairwise_distance
+from pairwise import pairwise_distance
 import math
 from tqdm import trange
 
