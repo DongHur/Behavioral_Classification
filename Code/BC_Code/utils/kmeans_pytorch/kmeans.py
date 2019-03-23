@@ -1,9 +1,8 @@
 import torch
-
 from torch import Tensor
 import numpy as np
 from utils.kmeans_pytorch.pairwise import pairwise_distance
-import math
+# import math
 from tqdm import trange
 
 from scipy import linalg, sparse
@@ -12,123 +11,6 @@ import scipy.sparse as sp
 from sklearn.metrics.pairwise import euclidean_distances
 
 CUDA = torch.cuda.is_available()
-
-def forgy(X, n_clusters):
-    random_state = 2
-    x_squared_norms = row_norms(X, squared=True)
-    random_state = check_random_state(random_state)
-
-    _len = len(X)
-#     indices = np.random.choice(_len, n_clusters)
-#     initial_state = X[indices]
-    initial_state = np.array(_k_init(X=X, n_clusters=5, x_squared_norms=x_squared_norms, random_state=random_state))    
-    return initial_state
-
-
-def lloyd(X, min_clusters=2, max_clusters=20, device=0, epoch=1):
-    X = torch.from_numpy(X).float().cuda(device)
-    sse = np.zeros(max_clusters-min_clusters)
-    
-    for cluster_idx, n_clusters in enumerate(range(min_clusters,max_clusters)):
-        initial_state = forgy(X, n_clusters)
-        
-        for i in range(epoch):
-            dis = pairwise_distance(X, initial_state)
-
-            choice_cluster = torch.argmin(dis, dim=1)
-
-            initial_state_pre = initial_state.clone()
-
-            for index in range(n_clusters):
-                selected = torch.nonzero(choice_cluster==index).squeeze()
-
-                selected = torch.index_select(X, 0, selected)
-                initial_state[index] = selected.mean(dim=0)
-                
-        sse_data=torch.sqrt(((initial_state[choice_cluster]-X)**2).sum(dim=1)).cuda(device)
-        select_centroid = torch.t(torch.eye(n_clusters)[choice_cluster]).cuda(device)
-        sse[cluster_idx]=torch.mv(select_centroid,sse_data).sum()     
-        
-        #center_shift = torch.sum(torch.sqrt(torch.sum((initial_state - initial_state_pre) ** 2, dim=1)))
-
-    #return choice_cluster.cpu().numpy(), initial_state.cpu().numpy()
-    return sse
-
-def lloyd_batch(X, n_clusters=3, device=0, epoch=1, batch_size=100):
-    n_points = X.shape[0]
-    n_tail = X.shape[0] % batch_size
-    if n_tail==0:
-        n_tail = batch_size
-        n_batches = X.shape[0]//batch_size
-    else:
-        n_batches = X.shape[0]//batch_size + 1
-    n_pad = batch_size - n_tail
-    X_padded = np.pad(X, [(0,n_pad),(0,0)],mode='constant')
-    
-    BX = X_padded.reshape(n_batches,batch_size,-1)
-    
-    initial_state = torch.from_numpy(forgy(X,n_clusters)).float().cuda(device)
-    initial_state_new = torch.zeros(initial_state.shape).cuda(device)
-    
-    for i in range(epoch):
-        cluster_points = torch.zeros(size=(n_clusters,1)).cuda(device)#counter of number of data points in that cluster
-        for n in range(n_batches):
-            if n==n_batches-1:
-                x_batch = torch.from_numpy(BX[n,:n_tail,:]).squeeze().float().cuda(device)
-            else:
-                x_batch = torch.from_numpy(BX[n,:,:]).squeeze().float().cuda(device)
-            dis = pairwise_distance(x_batch, initial_state)
-            choice_cluster = torch.argmin(dis,dim=1)
-            
-            
-            for index in range(n_clusters):
-                selected = torch.nonzero(choice_cluster==index).squeeze()
-                selected = torch.index_select(x_batch, 0, selected)
-                
-                if len(selected) != 0:
-                    cluster_points[index,0] += selected.shape[0]
-                    initial_state_new[index] += selected.sum(dim=0)
-        print(cluster_points)
-        # center_shift = torch.sum(torch.sqrt(torch.sum((initial_state_new - initial_state) ** 2, dim=1)))
-        # IF NONZERO !!!!
-        nonzero_idx = torch.nonzero(cluster_points)
-        initial_state[nonzero_idx] = initial_state_new[nonzero_idx]/cluster_points[nonzero_idx,0] # WE SHOULD BE DIVIDING BY THE TOTAL NUMBER OF POINT FOR THIS CLUSTER; IN THE PAPER 2.1 KMEANS ALGORITHM
-        
-    deviation = 0
-    for n in range(n_batches):
-        if n==n_batches-1:
-            x_batch = torch.from_numpy(BX[n,:n_tail,:]).squeeze().float().cuda(device)
-        else:
-            x_batch = torch.from_numpy(BX[n,:,:]).squeeze().float().cuda(device)
-        dis = pairwise_distance(x_batch, initial_state)
-        choice_cluster = torch.argmin(dis,dim=1)
-        
-        for index in range(n_clusters):
-            selected = torch.nonzero(choice_cluster==index).squeeze()
-            selected = torch.index_select(x_batch, 0, selected)
-            if len(selected) != 0:
-                batch_dev = float(((selected-initial_state[index])**2).sum())
-                #print(batch_dev)
-                deviation += batch_dev
-
-    deviation = deviation/n_points
-                
-    # IM MOST DEFINITELY CERTAIN YOU ARE SUMMING NOT FINDING THE MEAN TO COMPUTE THE DEVIATION
-    
-    # COMPUTE MSE
-#     X = torch.from_numpy(X).float().cuda(device)
-#     dis = pairwise_distance(X, initial_state)
-#     choice_cluster = torch.argmin(dis,dim=1)
-    
-#     sse_data=torch.sqrt(((initial_state[choice_cluster]-X)**2).sum(dim=1)).cuda(device)
-#     select_centroid = torch.t(torch.eye(n_clusters)[choice_cluster]).cuda(device)
-#     sse=torch.mv(select_centroid,sse_data).sum()     
-    
-    return deviation
-#     return choice_cluster.cpu().numpy(), initial_state.cpu().numpy()
-
-
-#######################################################################################################################
 
 class kmeans_core:
     def __init__(self, k, data_array, device=0, batch_size=1000, epochs=200, all_cuda=True, random_state=0, decrease_k=False):
@@ -206,12 +88,6 @@ class kmeans_core:
                 self.idx, dist_val = self.calc_idx(dt)
                 self.idx = torch.cat([self.idx, self.idx], dim=-1)
         self.index=0
-        
-        # COMPUTE TOTAL DISTANCE
-#         eye_cluster = torch.eye(self.k)[self.idx].cuda(self.device)
-#         tot_clust_dist = self.calc_distance(self.data)
-#         clust_dist = tot_clust_dist[eye_cluster==1]
-#         potential = (clust_dist@eye_cluster).sum()
         
         # RELEASE IDX FROM GPU
         self.idx = self.idx.cpu().numpy()
